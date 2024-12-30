@@ -1,17 +1,19 @@
+mod constants;
 mod http;
+mod request;
+mod router;
 
-use std::net::TcpListener;
+use constants::HttpMethod;
+use http::Http;
 
-use http::handle_request;
-
-const IPPORT: &str = "127.0.0.1:3000";
+const ADDRESS: &str = "127.0.0.1:3000";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind(IPPORT)?;
-
-    println!("Listening on {}", IPPORT);
-    for stream in listener.incoming() {
-        handle_request(stream?)?;
-    }
+    let mut http = Http::new();
+    http.register_route(HttpMethod::GET, "/");
+    http.register_route(HttpMethod::POST, "/post");
+    http.register_route(HttpMethod::PUT, "/");
+    http.register_route(HttpMethod::DELETE, "/del");
+    http.listen(ADDRESS)?;
     Ok(())
 }

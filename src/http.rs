@@ -1,3 +1,6 @@
+use std::error::Error;
+use std::net::TcpListener;
+
 use std::{
     io::{Read, Write},
     net::TcpStream,
@@ -5,82 +8,178 @@ use std::{
 
 use colored::Colorize;
 
-pub enum HttpResponseCode {
-    Success = 200,
-    ServerError = 500,
+use crate::constants::{HttpMethod, HttpResponseCode};
+use crate::request::Request;
+use crate::router::Router;
+
+pub struct Http {
+    router: Router,
 }
 
-impl ToString for HttpResponseCode {
-    fn to_string(&self) -> String {
-        match self {
-            HttpResponseCode::Success => "200 OK".to_string(),
-            HttpResponseCode::ServerError => "500 Internal Server Error".to_string(),
+impl Http {
+    pub fn new() -> Self {
+        Self {
+            router: Router::new(),
         }
     }
-}
 
-pub fn handle_request(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    let mut buffer = [0; 512];
-    stream.read(&mut buffer)?;
+    pub fn listen(&mut self, address: &str) -> Result<(), Box<dyn Error>> {
+        let listener = TcpListener::bind(address)?;
 
-    let contents = String::from_utf8_lossy(&buffer);
-    log_request(&contents);
+        println!("Listening on {}", address);
+        for stream in listener.incoming() {
+            self.handle_request(stream?)?;
+        }
 
-    match contents {
-        contents if contents.starts_with("GET") => handle_get(&stream),
-        contents if contents.starts_with("POST") => handle_post(&stream),
-        contents if contents.starts_with("PUT") => handle_put(&stream),
-        contents if contents.starts_with("DELETE") => handle_delete(&stream),
-        _ => write_response(
-            &stream,
-            get_response(
-                HttpResponseCode::ServerError,
-                "This HTTP method is not supported!",
+        Ok(())
+    }
+
+    pub fn register_route(&mut self, method: HttpMethod, path: &str) {
+        match self.router.add_route(method, &path) {
+            Ok(_) => (),
+            Err(e) => eprintln!("{}", e),
+        }
+    }
+
+    fn handle_request(&mut self, mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+        let mut buffer = [0; 512];
+        let bytes_read = stream.read(&mut buffer)?;
+
+        let contents = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
+        self.log_request(&contents);
+
+        let request = Request::new(contents);
+
+        let request: Request = match request {
+            Ok(value) => value,
+            Err(_) => {
+                let _ = self.write_response(
+                    &stream,
+                    self.get_response(
+                        HttpResponseCode::ServerError,
+                        Some("There was an error parsing your request!"),
+                    ),
+                );
+                return Ok(());
+            }
+        };
+
+        match request.method {
+            HttpMethod::GET => self.handle_get(&stream, request),
+            HttpMethod::POST => self.handle_post(&stream, request),
+            HttpMethod::PUT => self.handle_put(&stream, request),
+            HttpMethod::DELETE => self.handle_delete(&stream, request),
+            HttpMethod::NONE => self.write_response(
+                &stream,
+                self.get_response(
+                    HttpResponseCode::ServerError,
+                    Some("This HTTP method is not supported!"),
+                ),
             ),
-        ),
-    }?;
+        }?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-fn handle_get(stream: &TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    let response = get_response(HttpResponseCode::Success, "Hello from get!");
-    write_response(stream, response)
-}
+    fn handle_get(
+        &mut self,
+        stream: &TcpStream,
+        request: Request,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let route = self.router.get_route(HttpMethod::GET, &request.path);
+        match route {
+            Some(_r) => {
+                let response =
+                    self.get_response(HttpResponseCode::Success, Some("Hello from get!"));
+                self.write_response(stream, response)
+            }
+            None => {
+                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
+            }
+        }
+    }
 
-fn handle_post(stream: &TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    let response = get_response(HttpResponseCode::Success, "Hello from post!");
-    write_response(stream, response)
-}
+    fn handle_post(
+        &mut self,
+        stream: &TcpStream,
+        request: Request,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let route = self.router.get_route(HttpMethod::POST, &request.path);
+        match route {
+            Some(_r) => {
+                let response =
+                    self.get_response(HttpResponseCode::Success, Some("Hello from post!"));
+                self.write_response(stream, response)
+            }
+            None => {
+                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
+            }
+        }
+    }
 
-fn handle_put(stream: &TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    let response = get_response(HttpResponseCode::Success, "Hello from put!");
-    write_response(stream, response)
-}
+    fn handle_put(
+        &mut self,
+        stream: &TcpStream,
+        request: Request,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let route = self.router.get_route(HttpMethod::PUT, &request.path);
+        match route {
+            Some(_r) => {
+                let response =
+                    self.get_response(HttpResponseCode::Success, Some("Hello from put!"));
+                self.write_response(stream, response)
+            }
+            None => {
+                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
+            }
+        }
+    }
 
-fn handle_delete(stream: &TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    let response = get_response(HttpResponseCode::Success, "Hello from delete!");
-    write_response(stream, response)
-}
+    fn handle_delete(
+        &mut self,
+        stream: &TcpStream,
+        request: Request,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let route = self.router.get_route(HttpMethod::DELETE, &request.path);
+        match route {
+            Some(_r) => {
+                let response =
+                    self.get_response(HttpResponseCode::Success, Some("Hello from delete!"));
+                self.write_response(stream, response)
+            }
+            None => {
+                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
+            }
+        }
+    }
 
-fn write_response(
-    mut stream: &TcpStream,
-    response: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    stream.write(response.as_bytes())?;
-    stream.flush()?;
-    Ok(())
-}
+    fn write_response(
+        &self,
+        mut stream: &TcpStream,
+        response: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        stream.write(response.as_bytes())?;
+        stream.flush()?;
+        Ok(())
+    }
 
-fn get_response(status: HttpResponseCode, content: &str) -> String {
-    return format!(
-        "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n{}",
-        status.to_string(),
-        content.len(),
-        content
-    );
-}
+    fn get_response(&self, status: HttpResponseCode, content: Option<&str>) -> String {
+        let content = match content {
+            Some(value) => format!(
+                "\r\nContent-Length: {length}\r\n\r\n{value}",
+                length = value.len(),
+                value = value
+            ),
+            None => format!("\r\nContent-Length: 0"),
+        };
+        return format!(
+            "HTTP/1.1 {status}{content}",
+            status = status,
+            content = content
+        );
+    }
 
-fn log_request(req: &str) {
-    println!("\n{}: {}", "Request".cyan(), req.green())
+    fn log_request(&self, req: &str) {
+        println!("\n{}: {}", "Request".cyan(), req.green())
+    }
 }
