@@ -1,11 +1,11 @@
-use std::error::Error;
+use std::{error::Error, net::TcpStream};
 
 use crate::constants::HttpMethod;
 
-#[derive(Debug)]
 pub struct Route {
     method: HttpMethod,
     path: String,
+    pub callback: Box<dyn Fn(&TcpStream) -> ()>,
 }
 
 pub struct Router {
@@ -17,23 +17,33 @@ impl Router {
         Self { routes: vec![] }
     }
 
-    pub fn add_route(&mut self, method: HttpMethod, path: &str) -> Result<(), Box<dyn Error>> {
+    pub fn add_route(
+        &mut self,
+        method: HttpMethod,
+        path: &str,
+        callback: Box<dyn Fn(&TcpStream) -> ()>,
+    ) -> Result<(), Box<dyn Error>> {
         let existing = self.get_route(method.clone(), path);
         match existing {
             Some(_) => Err("This route exits".into()),
             None => {
-                self._add_route(method, path);
+                self._add_route(method, path, callback);
                 return Ok(());
             }
         }
     }
 
-    fn _add_route(&mut self, method: HttpMethod, path: &str) {
+    fn _add_route(
+        &mut self,
+        method: HttpMethod,
+        path: &str,
+        callback: Box<dyn Fn(&TcpStream) -> ()>,
+    ) {
         self.routes.push(Route {
             method,
             path: path.to_string(),
+            callback,
         });
-        println!("{:?}", self.routes);
     }
 
     pub fn get_route(&mut self, method: HttpMethod, path: &str) -> Option<&Route> {

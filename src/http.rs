@@ -34,8 +34,13 @@ impl Http {
         Ok(())
     }
 
-    pub fn register_route(&mut self, method: HttpMethod, path: &str) {
-        match self.router.add_route(method, &path) {
+    pub fn register_route(
+        &mut self,
+        method: HttpMethod,
+        path: &str,
+        callback: Box<dyn Fn(&TcpStream) -> ()>,
+    ) {
+        match self.router.add_route(method, &path, callback) {
             Ok(_) => (),
             Err(e) => eprintln!("{}", e),
         }
@@ -53,12 +58,10 @@ impl Http {
         let request: Request = match request {
             Ok(value) => value,
             Err(_) => {
-                let _ = self.write_response(
+                let _ = Self::respond(
                     &stream,
-                    self.get_response(
-                        HttpResponseCode::ServerError,
-                        Some("There was an error parsing your request!"),
-                    ),
+                    HttpResponseCode::ServerError,
+                    Some("There was an error parsing your request!"),
                 );
                 return Ok(());
             }
@@ -69,12 +72,10 @@ impl Http {
             HttpMethod::POST => self.handle_post(&stream, request),
             HttpMethod::PUT => self.handle_put(&stream, request),
             HttpMethod::DELETE => self.handle_delete(&stream, request),
-            HttpMethod::NONE => self.write_response(
+            HttpMethod::NONE => Self::respond(
                 &stream,
-                self.get_response(
-                    HttpResponseCode::ServerError,
-                    Some("This HTTP method is not supported!"),
-                ),
+                HttpResponseCode::ServerError,
+                Some("This HTTP method is not supported!"),
             ),
         }?;
 
@@ -88,14 +89,11 @@ impl Http {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let route = self.router.get_route(HttpMethod::GET, &request.path);
         match route {
-            Some(_r) => {
-                let response =
-                    self.get_response(HttpResponseCode::Success, Some("Hello from get!"));
-                self.write_response(stream, response)
+            Some(r) => {
+                (r.callback)(stream);
+                Ok(())
             }
-            None => {
-                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
-            }
+            None => Self::respond(stream, HttpResponseCode::NotFound, None),
         }
     }
 
@@ -106,14 +104,11 @@ impl Http {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let route = self.router.get_route(HttpMethod::POST, &request.path);
         match route {
-            Some(_r) => {
-                let response =
-                    self.get_response(HttpResponseCode::Success, Some("Hello from post!"));
-                self.write_response(stream, response)
+            Some(r) => {
+                (r.callback)(stream);
+                Ok(())
             }
-            None => {
-                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
-            }
+            None => Self::respond(stream, HttpResponseCode::NotFound, None),
         }
     }
 
@@ -124,14 +119,11 @@ impl Http {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let route = self.router.get_route(HttpMethod::PUT, &request.path);
         match route {
-            Some(_r) => {
-                let response =
-                    self.get_response(HttpResponseCode::Success, Some("Hello from put!"));
-                self.write_response(stream, response)
+            Some(r) => {
+                (r.callback)(stream);
+                Ok(())
             }
-            None => {
-                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
-            }
+            None => Self::respond(stream, HttpResponseCode::NotFound, None),
         }
     }
 
@@ -142,19 +134,23 @@ impl Http {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let route = self.router.get_route(HttpMethod::DELETE, &request.path);
         match route {
-            Some(_r) => {
-                let response =
-                    self.get_response(HttpResponseCode::Success, Some("Hello from delete!"));
-                self.write_response(stream, response)
+            Some(r) => {
+                (r.callback)(stream);
+                Ok(())
             }
-            None => {
-                self.write_response(stream, self.get_response(HttpResponseCode::NotFound, None))
-            }
+            None => Self::respond(stream, HttpResponseCode::NotFound, None),
         }
     }
 
+    pub fn respond(
+        stream: &TcpStream,
+        status: HttpResponseCode,
+        content: Option<&str>,
+    ) -> Result<(), Box<dyn Error>> {
+        Self::write_response(stream, Self::get_response(status, content))
+    }
+
     fn write_response(
-        &self,
         mut stream: &TcpStream,
         response: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -163,7 +159,7 @@ impl Http {
         Ok(())
     }
 
-    fn get_response(&self, status: HttpResponseCode, content: Option<&str>) -> String {
+    fn get_response(status: HttpResponseCode, content: Option<&str>) -> String {
         let content = match content {
             Some(value) => format!(
                 "\r\nContent-Length: {length}\r\n\r\n{value}",

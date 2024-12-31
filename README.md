@@ -4,8 +4,9 @@
 
 - [x] add tcp listener
 - [x] add http methods
-- [-] add routing
+- [ ] add routing
   - [x] add basic routing
   - [ ] add route parameters
   - [ ] add query parameters
-- [ ] add ability to run code on request
+- [x] add ability to run code on request
+- [ ] add body to post & put
