@@ -1,8 +1,13 @@
+use std::any::Any;
+
+use serde_json::Value;
+
 use crate::constants::HttpMethod;
 
 pub struct Request {
     pub method: HttpMethod,
     pub path: String,
+    pub data: Option<Box<dyn Any>>,
 }
 
 impl Request {
@@ -19,6 +24,23 @@ impl Request {
             return Err("Error parsing incoming request".to_string());
         }
 
-        Ok(Self { method, path })
+        let mut data = String::from("");
+        let mut should_append = false;
+        for line in lines {
+            if should_append {
+                data.push_str(line);
+            } else {
+                if line == "" {
+                    should_append = true;
+                }
+            }
+        }
+
+        let data: Option<Box<dyn Any>> = match serde_json::from_str::<Value>(&data) {
+            Ok(v) => Some(Box::new(v)),
+            Err(_) => None,
+        };
+
+        Ok(Self { method, path, data })
     }
 }

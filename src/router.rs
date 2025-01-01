@@ -1,11 +1,11 @@
 use std::{error::Error, net::TcpStream};
 
-use crate::constants::HttpMethod;
+use crate::{constants::HttpMethod, request::Request};
 
 pub struct Route {
     method: HttpMethod,
     path: String,
-    pub callback: Box<dyn Fn(&TcpStream) -> ()>,
+    pub callback: Box<dyn Fn(&TcpStream, Request) -> ()>,
 }
 
 pub struct Router {
@@ -21,7 +21,7 @@ impl Router {
         &mut self,
         method: HttpMethod,
         path: &str,
-        callback: Box<dyn Fn(&TcpStream) -> ()>,
+        callback: Box<dyn Fn(&TcpStream, Request) -> ()>,
     ) -> Result<(), Box<dyn Error>> {
         let existing = self.get_route(method.clone(), path);
         match existing {
@@ -37,7 +37,7 @@ impl Router {
         &mut self,
         method: HttpMethod,
         path: &str,
-        callback: Box<dyn Fn(&TcpStream) -> ()>,
+        callback: Box<dyn Fn(&TcpStream, Request) -> ()>,
     ) {
         self.routes.push(Route {
             method,

@@ -9,4 +9,4 @@
   - [ ] add route parameters
   - [ ] add query parameters
 - [x] add ability to run code on request
-- [ ] add body to post & put
+- [x] add body to post & put
